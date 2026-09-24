@@ -1,9 +1,4 @@
-# add package-lock.json to .gitignore
-package-lock.json
-# add package.json to .gitignore
-package.json
-# add tsconfig.json to .gitignore
-tsconfig.json
+
 node_modules/
 dist/
 build/
