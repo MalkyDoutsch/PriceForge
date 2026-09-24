@@ -1,5 +1,12 @@
 import { useState, useRef, useCallback } from 'react'
 
+type SummaryFormat = 'pdf' | 'excel'
+
+const SUMMARY_FORMATS: { value: SummaryFormat; label: string }[] = [
+  { value: 'pdf', label: 'PDF' },
+  { value: 'excel', label: 'Excel' },
+]
+
 interface LabelData {
   article: string
   description: string
@@ -24,6 +31,7 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<ApiResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [summaryFormat, setSummaryFormat] = useState<SummaryFormat>('pdf')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -84,14 +92,14 @@ export default function App() {
     setRegularProfit('')
   }
 
-  const downloadFile = async (endpoint: string, fileName: string) => {
+  const downloadFile = async (endpoint: string, fileName: string, extraBody: object = {}) => {
     if (!result?.labels) return
 
     try {
       const res = await fetch(`http://localhost:3001/api/${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ labels: result.labels }),
+        body: JSON.stringify({ labels: result.labels, ...extraBody }),
       })
 
       if (!res.ok) {
@@ -252,12 +260,32 @@ export default function App() {
               >
                 הורד מדבקות (PDF)
               </button>
-              <button
-                className="download-btn secondary"
-                onClick={() => downloadFile('generate-excel', `prices-${Date.now()}.xlsx`)}
-              >
-                הורד קובץ מחירים (Excel)
-              </button>
+              <div className="summary-download">
+                <div className="format-toggle">
+                  {SUMMARY_FORMATS.map((f) => (
+                    <button
+                      key={f.value}
+                      type="button"
+                      className={`toggle-btn ${summaryFormat === f.value ? 'active' : ''}`}
+                      onClick={() => setSummaryFormat(f.value)}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  className="download-btn secondary"
+                  onClick={() =>
+                    downloadFile(
+                      'generate-summary',
+                      `summary-${Date.now()}.${summaryFormat === 'pdf' ? 'pdf' : 'xlsx'}`,
+                      { format: summaryFormat }
+                    )
+                  }
+                >
+                  הורדת סיכום
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -509,7 +537,33 @@ export default function App() {
         .download-btn:hover { opacity: 0.88; transform: translateY(-1px); }
         .download-btn.secondary { background: var(--accent2); }
 
-        .download-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .download-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: end; }
+
+        .summary-download { display: flex; flex-direction: column; gap: 8px; }
+
+        .format-toggle {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          background: var(--surface2);
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          padding: 3px;
+          gap: 3px;
+        }
+        .toggle-btn {
+          background: transparent;
+          border: none;
+          border-radius: 6px;
+          padding: 6px;
+          color: var(--muted);
+          font-family: 'Heebo', sans-serif;
+          font-size: 0.8rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.15s;
+        }
+        .toggle-btn:hover { color: var(--text); }
+        .toggle-btn.active { background: var(--accent2); color: #0f0f11; }
 
         @media (max-width: 480px) {
           .fields { grid-template-columns: 1fr; }

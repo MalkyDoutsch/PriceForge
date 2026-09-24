@@ -30,3 +30,5 @@ export interface LabelData {
   regularPrice: number
   quantity: number
 }
+
+export type SummaryFormat = 'pdf' | 'excel'

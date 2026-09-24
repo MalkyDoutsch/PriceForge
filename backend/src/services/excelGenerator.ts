@@ -2,13 +2,13 @@ import ExcelJS from 'exceljs'
 import { LabelData } from '../types'
 
 /**
- * Generates a price list Excel file: one row per article with
+ * Generates a summary Excel file: one row per article with
  * code, description, club price, regular price and quantity.
  *
  * @param labels - Array of label data objects (one per article)
  * @returns .xlsx file as a Buffer
  */
-export async function generatePriceListExcel(labels: LabelData[]): Promise<Buffer> {
+export async function generateSummaryExcel(labels: LabelData[]): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook()
   const worksheet = workbook.addWorksheet('מחירון', {
     views: [{ rightToLeft: true, state: 'frozen', ySplit: 1 }],

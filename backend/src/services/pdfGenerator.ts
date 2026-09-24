@@ -165,6 +165,99 @@ function drawLabel(
 }
 
 /**
+ * Summary table columns (widths in mm, total 190 = A4 width minus margins)
+ */
+const SUMMARY_COLUMNS: { header: string; width: number; align: 'left' | 'right' }[] = [
+  { header: 'Code', width: 35, align: 'left' },
+  { header: 'Description', width: 85, align: 'left' },
+  { header: 'Club', width: 25, align: 'right' },
+  { header: 'Regular', width: 25, align: 'right' },
+  { header: 'Qty', width: 20, align: 'right' },
+]
+
+/**
+ * Generates a summary PDF: a table with one row per article
+ * (code, description, club price, regular price, quantity) and a total row.
+ * Headers are in English because the built-in PDF fonts do not support Hebrew.
+ *
+ * @param labels - Array of label data objects (one per article)
+ * @returns PDF document as bytes (Uint8Array)
+ */
+export function generateSummaryPDF(labels: LabelData[]): Uint8Array {
+  const pdf = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+  })
+
+  const pageHeight = pdf.internal.pageSize.getHeight()
+  const margin = 10
+  const rowHeight = 7
+  const cellPadding = 1.5
+  const tableWidth = SUMMARY_COLUMNS.reduce((sum, col) => sum + col.width, 0)
+  let y = margin
+
+  const drawRow = (cells: string[]) => {
+    let x = margin
+    SUMMARY_COLUMNS.forEach((col, i) => {
+      const textX = col.align === 'right' ? x + col.width - cellPadding : x + cellPadding
+      const text = pdf.splitTextToSize(cells[i], col.width - cellPadding * 2)[0] ?? ''
+      pdf.text(text, textX, y + 5, { align: col.align })
+      x += col.width
+    })
+    y += rowHeight
+  }
+
+  const drawHeader = () => {
+    pdf.setFont('helvetica', 'bold')
+    pdf.setFontSize(10)
+    drawRow(SUMMARY_COLUMNS.map((col) => col.header))
+    pdf.setLineWidth(0.3)
+    pdf.line(margin, y, margin + tableWidth, y)
+    pdf.setFont('helvetica', 'normal')
+  }
+
+  // Title
+  pdf.setFont('helvetica', 'bold')
+  pdf.setFontSize(14)
+  pdf.text('Price Summary', margin, y + 6)
+  pdf.setFont('helvetica', 'normal')
+  pdf.setFontSize(9)
+  pdf.text(new Date().toLocaleDateString('en-GB'), margin + tableWidth, y + 6, { align: 'right' })
+  y += 12
+
+  drawHeader()
+
+  labels.forEach((label) => {
+    if (y + rowHeight > pageHeight - margin) {
+      pdf.addPage()
+      y = margin
+      drawHeader()
+    }
+    drawRow([
+      label.article,
+      label.description,
+      label.clubPrice.toFixed(2),
+      label.regularPrice.toFixed(2),
+      String(label.quantity),
+    ])
+  })
+
+  // Total row
+  if (y + rowHeight > pageHeight - margin) {
+    pdf.addPage()
+    y = margin
+  }
+  pdf.setLineWidth(0.3)
+  pdf.line(margin, y, margin + tableWidth, y)
+  pdf.setFont('helvetica', 'bold')
+  const totalQuantity = labels.reduce((sum, label) => sum + label.quantity, 0)
+  drawRow(['Total', `${labels.length} items`, '', '', String(totalQuantity)])
+
+  return new Uint8Array(pdf.output('arraybuffer') as ArrayBuffer)
+}
+
+/**
  * Draws a rectangular border around the label area
  *
  * @param pdf - jsPDF instance
