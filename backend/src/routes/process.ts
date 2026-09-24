@@ -4,7 +4,8 @@ import path from 'path'
 import fs from 'fs'
 import { parseExcel } from '../services/excelParser'
 import { buildLabels } from '../services/labelBuilder'
-import { ProcessRequest, LabelFormat } from '../types'
+import { generateLabelsPDF } from '../services/pdfGenerator'
+import { ProcessRequest, LabelFormat, LabelData } from '../types'
 
 const router = Router()
 
@@ -69,6 +70,37 @@ router.post('/process', upload.single('file'), async (req: Request, res: Respons
     if (req.file?.path) {
       fs.unlink(req.file.path, () => {})
     }
+  }
+})
+
+/**
+ * POST /api/generate-pdf
+ * Generates a PDF file from label data
+ * Body: { labels: LabelData[] }
+ * Returns: PDF file as binary
+ */
+router.post('/generate-pdf', (req: Request, res: Response) => {
+  try {
+    const { labels } = req.body as { labels: LabelData[] }
+
+    if (!labels || !Array.isArray(labels) || labels.length === 0) {
+      res.status(400).json({ error: 'Invalid or empty labels array' })
+      return
+    }
+
+    // Generate PDF
+    const pdfBytes = generateLabelsPDF(labels)
+
+    // Set response headers for PDF download
+    res.setHeader('Content-Type', 'application/pdf')
+    res.setHeader('Content-Length', pdfBytes.length)
+    res.setHeader('Content-Disposition', 'attachment; filename="labels.pdf"')
+
+    // Send PDF as binary data
+    res.end(Buffer.from(pdfBytes))
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'PDF generation failed', details: (err as Error).message })
   }
 })
 

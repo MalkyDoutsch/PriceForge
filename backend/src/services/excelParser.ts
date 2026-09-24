@@ -3,7 +3,7 @@ import { ExcelRow } from '../types'
 
 const COLUMNS = [
   'article',
-  'description',
+  'article description',
   'colorCode',
   'colorDescription',
   'size',
@@ -25,12 +25,31 @@ export async function parseExcel(filePath: string): Promise<ExcelRow[]> {
   worksheet.eachRow((row, rowNumber) => {
     if (rowNumber === 1) return // skip header
 
+    // const values = row.values as (string | number | null)[]
+    // // ExcelJS row.values is 1-indexed
+    // const [, article, description, colorCode, colorDescription, size, family, price, ean, pieces, segment, articleType] = values
+
+    // if (!article || !price) return // skip empty rows
     const values = row.values as (string | number | null)[]
-    // ExcelJS row.values is 1-indexed
-    const [, article, description, colorCode, colorDescription, size, family, price, ean, pieces, segment, articleType] = values
 
-    if (!article || !price) return // skip empty rows
+    // חילוץ לפי הסדר בתמונה:
+    const [
+        , 
+        article,          // A
+        description,      // B
+        colorCode,        // C
+        colorDescription, // D
+        size,             // E
+        family,           // F
+        ,                 // G (מדלגים על עמודה ריקה)
+        price,            // H
+        ean,              // I
+        pieces,           // J
+        segment,          // K
+        articleType       // L
+    ] = values
 
+if (!article || price === undefined) return
     rows.push({
       article: String(article ?? ''),
       description: String(description ?? ''),

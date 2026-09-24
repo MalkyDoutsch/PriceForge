@@ -6,7 +6,7 @@ import { calculatePrices } from './priceCalculator'
  * Each row produces one LabelData with quantity = pieces.
  */
 export function buildLabels(rows: ExcelRow[], params: ProcessRequest): LabelData[] {
-  return rows.map((row) => {
+  return rows.flatMap((row) => {
     const { clubPrice, regularPrice } = calculatePrices(
       row.price,
       params.euroRate,
@@ -14,12 +14,14 @@ export function buildLabels(rows: ExcelRow[], params: ProcessRequest): LabelData
       params.regularProfit
     )
 
-    return {
+    const label=  {
       article: row.article,
       description: row.description,
       clubPrice,
       regularPrice,
-      quantity: row.pieces,
+      quantity: row.pieces || 1,
     }
+
+    return Array.from({ length: row.pieces || 1 }, () => ({ ...label }))
   })
 }
