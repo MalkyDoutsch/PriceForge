@@ -1,27 +1,4 @@
-export interface ExcelRow {
-  article: string
-  description: string
-  colorCode: string
-  colorDescription: string
-  size: string
-  family: string
-  price: number
-  ean: string
-  pieces: number
-  segment: string
-  articleType: string
-}
-
-export interface ProcessRequest {
-  euroRate: number
-  clubProfit: number
-  regularProfit: number
-}
-
-export interface PriceResult {
-  clubPrice: number
-  regularPrice: number
-}
+// Mirrors backend/src/types — keep both in sync.
 
 export interface LabelData {
   article: string
@@ -29,6 +6,19 @@ export interface LabelData {
   clubPrice: number
   regularPrice: number
   quantity: number
+}
+
+export interface ProcessResult {
+  success: boolean
+  totalRows: number
+  totalLabels: number
+  labels: LabelData[]
+}
+
+export interface ProcessParams {
+  euroRate: string
+  clubProfit: string
+  regularProfit: string
 }
 
 export type SummaryFormat = 'pdf' | 'excel'

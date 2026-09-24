@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs'
 import { ExcelRow } from '../types'
+import { UserInputError } from '../errors'
 
 type Field = keyof ExcelRow
 
@@ -28,12 +29,6 @@ const REQUIRED_FIELDS: { field: Field; name: string }[] = [
 
 /** How many rows from the top to search for the header row */
 const HEADER_SEARCH_ROWS = 10
-
-/**
- * Thrown when the file structure is invalid (e.g. required columns missing).
- * The message is user-facing (Hebrew).
- */
-export class ExcelFormatError extends Error {}
 
 /**
  * Lowercases, removes spaces/punctuation and unifies 'colour' → 'color'.
@@ -78,7 +73,7 @@ function mapColumns(row: ExcelJS.Row): Partial<Record<Field, number>> {
 /**
  * Finds the header row within the first rows of the sheet:
  * the first row containing all required columns.
- * Throws ExcelFormatError with the missing columns if none is found.
+ * Throws UserInputError with the missing columns if none is found.
  */
 function findHeaderRow(worksheet: ExcelJS.Worksheet) {
   let best: { rowNumber: number; columns: Partial<Record<Field, number>>; matched: number } | null = null
@@ -98,7 +93,7 @@ function findHeaderRow(worksheet: ExcelJS.Worksheet) {
   }
 
   if (!best) {
-    throw new ExcelFormatError('הקובץ ריק')
+    throw new UserInputError('הקובץ ריק')
   }
 
   const bestColumns = best.columns
@@ -111,7 +106,7 @@ function findHeaderRow(worksheet: ExcelJS.Worksheet) {
     if (cell.text.trim()) foundHeaders.push(cell.text.trim())
   })
 
-  throw new ExcelFormatError(
+  throw new UserInputError(
     `לא נמצאה עמודת ${missing}. הכותרות שנמצאו בקובץ: ${foundHeaders.join(', ') || '(אין)'}`
   )
 }
@@ -122,7 +117,7 @@ export async function parseExcel(filePath: string): Promise<ExcelRow[]> {
 
   const worksheet = workbook.worksheets[0]
   if (!worksheet) {
-    throw new ExcelFormatError('הקובץ ריק')
+    throw new UserInputError('הקובץ ריק')
   }
 
   const { rowNumber: headerRowNumber, columns } = findHeaderRow(worksheet)

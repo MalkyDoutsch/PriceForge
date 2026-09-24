@@ -1,167 +1,105 @@
 import jsPDF from 'jspdf'
-import { LabelData } from '../types'
+import { LabelData, LabelSettings } from '../types'
+import { computeLayout } from './labelLayout'
+
+/** 1pt in mm */
+const PT_TO_MM = 0.3528
+/** Line height as a multiple of font size */
+const LINE_HEIGHT = 1.2
+/** Horizontal padding inside a label in mm */
+const LABEL_PADDING = 1.5
+const MAX_DESCRIPTION_LINES = 2
 
 /**
- * Configuration for label layout and PDF generation
- */
-interface LabelConfig {
-  /** Label dimensions in mm */
-  labelWidth: number
-  labelHeight: number
-  /** Number of columns per row */
-  columnsPerRow: number
-  /** Margins in mm */
-  marginTop: number
-  marginLeft: number
-  marginRight: number
-  marginBottom: number
-  /** Spacing between labels in mm */
-  gapBetweenLabels: number
-}
-
-/**
- * Default configuration for A4 labels
- * 3cm x 2.5cm stickers (30mm x 25mm), 4 stickers per column
- */
-const DEFAULT_LABEL_CONFIG: LabelConfig = {
-  labelWidth: 30,
-  labelHeight: 25,
-  columnsPerRow: 6,
-  marginTop: 10,
-  marginLeft: 10,
-  marginRight: 10,
-  marginBottom: 10,
-  gapBetweenLabels: 2,
-}
-
-/**
- * Generates a printable PDF of product labels
+ * Generates a printable A4 PDF of product labels.
+ * Columns/rows per page are computed from the label settings.
  *
  * @param labels - Array of label data objects; each is printed `quantity` times
- * @param config - Optional configuration for label layout
+ * @param settings - Label size, margins, gaps, font sizes and border
  * @returns PDF document as bytes (Uint8Array)
- *
- * @example
- * const labels = [
- *   { article: 'ART001', description: 'Widget', clubPrice: 10, regularPrice: 15 },
- *   { article: 'ART002', description: 'Gadget', clubPrice: 20, regularPrice: 25 }
- * ];
- * const pdf = generateLabelsPDF(labels);
- * // Save to file or send to client
  */
-export function generateLabelsPDF(
-  labels: LabelData[],
-  config: Partial<LabelConfig> = {}
-): Uint8Array {
-  // Merge custom config with defaults
-  const finalConfig = { ...DEFAULT_LABEL_CONFIG, ...config }
-
-  // Initialize PDF with A4 size (210mm x 297mm)
+export function generateLabelsPDF(labels: LabelData[], settings: LabelSettings): Uint8Array {
   const pdf = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
     format: 'a4',
   })
 
-  const pageWidth = pdf.internal.pageSize.getWidth()
-  const pageHeight = pdf.internal.pageSize.getHeight()
-
-  // Calculate available space and layout
-  const availableWidth =
-    pageWidth - finalConfig.marginLeft - finalConfig.marginRight
-  const availableHeight =
-    pageHeight - finalConfig.marginTop - finalConfig.marginBottom
-
-  // Calculate how many rows can fit per page
-  const labelWithGap = finalConfig.labelHeight + finalConfig.gapBetweenLabels
-  const rowsPerPage = Math.floor(availableHeight / labelWithGap)
-  const labelsPerPage = rowsPerPage * finalConfig.columnsPerRow
+  const layout = computeLayout(settings)
 
   // One physical label per unit of quantity
   const physicalLabels = labels.flatMap((label) =>
     Array.from({ length: label.quantity || 1 }, () => label)
   )
 
-  // Process each label
   physicalLabels.forEach((label, index) => {
-    // Calculate if we need a new page
-    if (index > 0 && index % labelsPerPage === 0) {
+    if (index > 0 && index % layout.perPage === 0) {
       pdf.addPage()
     }
 
-    // Calculate position within current page
-    const positionInPage = index % labelsPerPage
-    const rowIndex = Math.floor(positionInPage / finalConfig.columnsPerRow)
-    const colIndex = positionInPage % finalConfig.columnsPerRow
+    const positionInPage = index % layout.perPage
+    const rowIndex = Math.floor(positionInPage / layout.columns)
+    const colIndex = positionInPage % layout.columns
 
-    // Calculate x and y coordinates
-    const x =
-      finalConfig.marginLeft +
-      colIndex * (finalConfig.labelWidth + finalConfig.gapBetweenLabels)
-    const y =
-      finalConfig.marginTop +
-      rowIndex * (finalConfig.labelHeight + finalConfig.gapBetweenLabels)
+    const x = layout.originX + colIndex * (settings.labelWidth + settings.gapX)
+    const y = layout.originY + rowIndex * (settings.labelHeight + settings.gapY)
 
-    // Draw label
-    drawLabel(pdf, label, x, y, finalConfig)
+    drawLabel(pdf, label, x, y, settings)
   })
 
-  // Return PDF as bytes
   return new Uint8Array(pdf.output('arraybuffer') as ArrayBuffer)
 }
 
 /**
- * Draws a single label on the PDF at the specified coordinates
+ * Draws a single label: code, description (up to 2 lines), regular price, club price.
+ * Lines are stacked and vertically centered within the label.
  *
- * @param pdf - jsPDF instance
- * @param label - Label data to draw
- * @param x - X coordinate in mm
- * @param y - Y coordinate in mm
- * @param config - Label configuration
+ * NOTE: frontend1/src/components/LabelPreview.tsx mirrors this layout — keep both in sync.
  */
 function drawLabel(
   pdf: jsPDF,
   label: LabelData,
   x: number,
   y: number,
-  config: LabelConfig
+  settings: LabelSettings
 ): void {
-  // Draw border
-  drawBorder(pdf, x, y, config.labelWidth, config.labelHeight)
+  const { labelWidth, labelHeight, fontSizes } = settings
 
-  // Calculate text positions
-  const centerX = x + config.labelWidth / 2
-  const padding = 0.5 // mm
+  if (settings.showBorder) {
+    drawBorder(pdf, x, y, labelWidth, labelHeight)
+  }
 
-  // Draw article ID (bold, small font, top) - moved down slightly
-  pdf.setFont('helvetica', 'bold')
-  pdf.setFontSize(10)
-  pdf.text(label.article, centerX, y + padding + 3.5, { align: 'center' })
-
-  // Draw description (regular font, small size)
+  // Wrap description with its own font size to measure correctly
   pdf.setFont('helvetica', 'normal')
-  pdf.setFontSize(5)
-  const descriptionY = y + padding + 4.5
-  // Split description if it's too long
-  const descriptionLines = pdf.splitTextToSize(
-    label.description,
-    config.labelWidth - padding * 2
-  )
-  pdf.text(descriptionLines, centerX, descriptionY, { align: 'center' })
+  pdf.setFontSize(fontSizes.description)
+  const descriptionLines: string[] = label.description
+    ? (pdf.splitTextToSize(label.description, labelWidth - LABEL_PADDING * 2) as string[]).slice(
+        0,
+        MAX_DESCRIPTION_LINES
+      )
+    : []
 
-  // Draw regular price and club price with same size
-  pdf.setFont('helvetica', 'bold')
-  pdf.setFontSize(12)
-  const regularPriceY = y + padding + 12
-  const clubPriceY = y + padding + 15.5
-  pdf.text(`${label.regularPrice.toFixed(2)}`, centerX, regularPriceY, {
-    align: 'center',
-  })
+  const lines = [
+    { text: label.article, size: fontSizes.article, bold: true },
+    ...descriptionLines.map((text) => ({ text, size: fontSizes.description, bold: false })),
+    { text: label.regularPrice.toFixed(2), size: fontSizes.price, bold: true },
+    { text: label.clubPrice.toFixed(2), size: fontSizes.price, bold: true },
+  ]
 
-  // Draw club price with same font size as regular price
-  pdf.text(`${label.clubPrice.toFixed(2)}`, centerX, clubPriceY, {
-    align: 'center',
-  })
+  const lineHeight = (size: number) => size * PT_TO_MM * LINE_HEIGHT
+  const contentHeight = lines.reduce((sum, line) => sum + lineHeight(line.size), 0)
+
+  const centerX = x + labelWidth / 2
+  let lineTop = y + Math.max(0, (labelHeight - contentHeight) / 2)
+
+  for (const line of lines) {
+    pdf.setFont('helvetica', line.bold ? 'bold' : 'normal')
+    pdf.setFontSize(line.size)
+    // Center the glyphs within the line box
+    const textTop = lineTop + (lineHeight(line.size) - line.size * PT_TO_MM) / 2
+    pdf.text(line.text, centerX, textTop, { align: 'center', baseline: 'top' })
+    lineTop += lineHeight(line.size)
+  }
 }
 
 /**
@@ -273,8 +211,8 @@ function drawBorder(
   width: number,
   height: number
 ): void {
-  // Set line width to thin (0.5mm)
-  pdf.setLineWidth(0.5)
+  // Set line width to thin (0.3mm)
+  pdf.setLineWidth(0.3)
   // Set stroke color to black
   pdf.setDrawColor(0, 0, 0)
   // Draw rectangle

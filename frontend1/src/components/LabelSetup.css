@@ -1,0 +1,101 @@
+/* Uses the color tokens defined in App.tsx (:root) */
+
+.label-setup { gap: 16px; }
+
+.label-setup-previews {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+
+/* Single label */
+.label-preview { display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: 0; }
+
+.label-preview-sticker {
+  box-sizing: border-box;
+  background: #fff;
+  color: #000;
+  border-radius: 3px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  font-family: Helvetica, Arial, sans-serif;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  direction: ltr;
+}
+.label-preview-sticker.with-border { outline: 1px solid #000; outline-offset: -1px; }
+
+.label-preview-caption { font-size: 0.75rem; color: var(--muted); }
+
+.label-preview-warning {
+  font-size: 0.78rem;
+  color: var(--danger);
+  text-align: center;
+}
+
+/* Page layout */
+.page-preview { display: flex; flex-direction: column; align-items: center; gap: 8px; flex-shrink: 0; }
+.page-preview-sheet { width: 110px; height: auto; display: block; }
+.page-preview-paper { fill: #fff; }
+.page-preview-label { fill: rgba(91, 141, 239, 0.18); stroke: var(--accent2); stroke-width: 0.6; }
+.page-preview-summary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.page-preview-summary strong { color: var(--accent); }
+
+/* Settings panel */
+.label-settings { display: flex; flex-direction: column; gap: 16px; }
+
+.preset-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.preset-btn {
+  background: var(--surface2);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 14px;
+  color: var(--text);
+  font-family: 'Heebo', sans-serif;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.preset-btn:hover { border-color: var(--muted); }
+.preset-btn.active { border-color: var(--accent); background: rgba(232, 197, 71, 0.07); }
+.preset-btn.custom { cursor: default; color: var(--muted); }
+.preset-btn.custom.active { color: var(--text); }
+
+.settings-group { display: flex; flex-direction: column; gap: 8px; }
+.settings-group-title { font-size: 0.8rem; color: var(--muted); }
+
+/* Higher specificity than App's .fields (3 columns) */
+.fields.settings-fields-2 { grid-template-columns: 1fr 1fr; }
+
+.settings-advanced summary {
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.settings-advanced summary:hover { color: var(--text); }
+
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--text);
+  cursor: pointer;
+}
+.checkbox-field input { accent-color: var(--accent); width: 16px; height: 16px; }
+
+@media (max-width: 480px) {
+  .label-setup-previews { flex-direction: column; align-items: center; }
+}

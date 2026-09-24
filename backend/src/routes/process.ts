@@ -2,9 +2,11 @@ import { Router, Request, Response } from 'express'
 import multer from 'multer'
 import path from 'path'
 import fs from 'fs'
-import { parseExcel, ExcelFormatError } from '../services/excelParser'
+import { parseExcel } from '../services/excelParser'
 import { buildLabels } from '../services/labelBuilder'
+import { parseLabelSettings } from '../services/labelLayout'
 import { generateLabelsPDF, generateSummaryPDF } from '../services/pdfGenerator'
+import { UserInputError } from '../errors'
 import { generateSummaryExcel } from '../services/excelGenerator'
 import { ProcessRequest, LabelData, SummaryFormat } from '../types'
 
@@ -61,7 +63,7 @@ router.post('/process', upload.single('file'), async (req: Request, res: Respons
       labels,
     })
   } catch (err) {
-    if (err instanceof ExcelFormatError) {
+    if (err instanceof UserInputError) {
       res.status(400).json({ error: err.message })
       return
     }
@@ -77,21 +79,20 @@ router.post('/process', upload.single('file'), async (req: Request, res: Respons
 
 /**
  * POST /api/generate-pdf
- * Generates a PDF file from label data
- * Body: { labels: LabelData[] }
+ * Generates a labels PDF file from label data
+ * Body: { labels: LabelData[], settings?: LabelSettings } (defaults used when settings are omitted)
  * Returns: PDF file as binary
  */
 router.post('/generate-pdf', (req: Request, res: Response) => {
   try {
-    const { labels } = req.body as { labels: LabelData[] }
+    const { labels, settings } = req.body as { labels: LabelData[]; settings?: unknown }
 
     if (!labels || !Array.isArray(labels) || labels.length === 0) {
       res.status(400).json({ error: 'Invalid or empty labels array' })
       return
     }
 
-    // Generate PDF
-    const pdfBytes = generateLabelsPDF(labels)
+    const pdfBytes = generateLabelsPDF(labels, parseLabelSettings(settings))
 
     // Set response headers for PDF download
     res.setHeader('Content-Type', 'application/pdf')
@@ -101,6 +102,10 @@ router.post('/generate-pdf', (req: Request, res: Response) => {
     // Send PDF as binary data
     res.end(Buffer.from(pdfBytes))
   } catch (err) {
+    if (err instanceof UserInputError) {
+      res.status(400).json({ error: err.message })
+      return
+    }
     console.error(err)
     res.status(500).json({ error: 'PDF generation failed', details: (err as Error).message })
   }

@@ -1,26 +1,14 @@
-import { useState, useRef, useCallback } from 'react'
-
-type SummaryFormat = 'pdf' | 'excel'
+import { useState, useRef, useCallback, useEffect } from 'react'
+import type { LabelSettings, ProcessResult, SummaryFormat } from './types'
+import { fetchLabelsPdf, fetchSummary, processFile } from './api'
+import { saveBlob, showBlobInTab } from './download'
+import { getSettingsError, loadLabelSettings, saveLabelSettings } from './labelSettings'
+import LabelSetup from './components/LabelSetup'
 
 const SUMMARY_FORMATS: { value: SummaryFormat; label: string }[] = [
   { value: 'pdf', label: 'PDF' },
   { value: 'excel', label: 'Excel' },
 ]
-
-interface LabelData {
-  article: string
-  description: string
-  clubPrice: number
-  regularPrice: number
-  quantity: number
-}
-
-interface ApiResponse {
-  success: boolean
-  totalRows: number
-  totalLabels: number
-  labels: LabelData[]
-}
 
 export default function App() {
   const [file, setFile] = useState<File | null>(null)
@@ -29,10 +17,18 @@ export default function App() {
   const [clubProfit, setClubProfit] = useState('')
   const [regularProfit, setRegularProfit] = useState('')
   const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<ApiResponse | null>(null)
+  const [result, setResult] = useState<ProcessResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [summaryFormat, setSummaryFormat] = useState<SummaryFormat>('pdf')
+  const [labelSettings, setLabelSettings] = useState<LabelSettings>(loadLabelSettings)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Remember the label settings for next time
+  useEffect(() => {
+    saveLabelSettings(labelSettings)
+  }, [labelSettings])
+
+  const settingsError = getSettingsError(labelSettings)
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -62,20 +58,8 @@ export default function App() {
     setError(null)
     setResult(null)
 
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('euroRate', euroRate)
-    formData.append('clubProfit', clubProfit)
-    formData.append('regularProfit', regularProfit)
-
     try {
-      const res = await fetch('http://localhost:3001/api/process', {
-        method: 'POST',
-        body: formData,
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'שגיאה בשרת')
-      setResult(data)
+      setResult(await processFile(file, { euroRate, clubProfit, regularProfit }))
     } catch (err) {
       setError((err as Error).message)
     } finally {
@@ -92,31 +76,40 @@ export default function App() {
     setRegularProfit('')
   }
 
-  const downloadFile = async (endpoint: string, fileName: string, extraBody: object = {}) => {
-    if (!result?.labels) return
+  const handleDownloadLabels = async () => {
+    if (!result) return
+    setError(null)
 
     try {
-      const res = await fetch(`http://localhost:3001/api/${endpoint}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ labels: result.labels, ...extraBody }),
-      })
+      saveBlob(await fetchLabelsPdf(result.labels, labelSettings), `labels-${Date.now()}.pdf`)
+    } catch (err) {
+      setError((err as Error).message)
+    }
+  }
 
-      if (!res.ok) {
-        const error = await res.json()
-        throw new Error(error.error || 'Failed to generate file')
-      }
+  const handlePreviewLabels = async () => {
+    if (!result) return
+    setError(null)
 
-      // Create blob and trigger download
-      const blob = await res.blob()
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = fileName
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(url)
+    // Open the tab before awaiting, otherwise the popup blocker stops it
+    const tab = window.open('', '_blank')
+    if (!tab) return setError('הדפדפן חסם פתיחת לשונית חדשה')
+
+    try {
+      showBlobInTab(await fetchLabelsPdf(result.labels, labelSettings), tab)
+    } catch (err) {
+      tab.close()
+      setError((err as Error).message)
+    }
+  }
+
+  const handleDownloadSummary = async () => {
+    if (!result) return
+    setError(null)
+
+    try {
+      const extension = summaryFormat === 'pdf' ? 'pdf' : 'xlsx'
+      saveBlob(await fetchSummary(result.labels, summaryFormat), `summary-${Date.now()}.${extension}`)
     } catch (err) {
       setError((err as Error).message)
     }
@@ -251,16 +244,36 @@ export default function App() {
               </div>
             </div>
 
+            {result.labels.length > 0 && (
+              <LabelSetup
+                settings={labelSettings}
+                onChange={setLabelSettings}
+                sampleLabel={result.labels[0]}
+                totalLabels={result.totalLabels}
+              />
+            )}
+
             {error && <div className="error-msg">{error}</div>}
 
             <div className="download-actions">
-              <button
-                className="download-btn"
-                onClick={() => downloadFile('generate-pdf', `labels-${Date.now()}.pdf`)}
-              >
-                הורד מדבקות (PDF)
-              </button>
-              <div className="summary-download">
+              <div className="download-group">
+                <button
+                  type="button"
+                  className="preview-btn"
+                  onClick={handlePreviewLabels}
+                  disabled={!!settingsError}
+                >
+                  תצוגה מקדימה של עמוד
+                </button>
+                <button
+                  className="download-btn"
+                  onClick={handleDownloadLabels}
+                  disabled={!!settingsError}
+                >
+                  הורד מדבקות (PDF)
+                </button>
+              </div>
+              <div className="download-group">
                 <div className="format-toggle">
                   {SUMMARY_FORMATS.map((f) => (
                     <button
@@ -273,16 +286,7 @@ export default function App() {
                     </button>
                   ))}
                 </div>
-                <button
-                  className="download-btn secondary"
-                  onClick={() =>
-                    downloadFile(
-                      'generate-summary',
-                      `summary-${Date.now()}.${summaryFormat === 'pdf' ? 'pdf' : 'xlsx'}`,
-                      { format: summaryFormat }
-                    )
-                  }
-                >
+                <button className="download-btn secondary" onClick={handleDownloadSummary}>
                   הורדת סיכום
                 </button>
               </div>
@@ -534,12 +538,27 @@ export default function App() {
           cursor: pointer;
           transition: opacity 0.18s, transform 0.12s;
         }
-        .download-btn:hover { opacity: 0.88; transform: translateY(-1px); }
+        .download-btn:hover:not(:disabled) { opacity: 0.88; transform: translateY(-1px); }
         .download-btn.secondary { background: var(--accent2); }
+        .download-btn:disabled, .preview-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .preview-btn {
+          background: transparent;
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          padding: 7px;
+          color: var(--text);
+          font-family: 'Heebo', sans-serif;
+          font-size: 0.8rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: border-color 0.15s;
+        }
+        .preview-btn:hover:not(:disabled) { border-color: var(--accent); }
 
         .download-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: end; }
 
-        .summary-download { display: flex; flex-direction: column; gap: 8px; }
+        .download-group { display: flex; flex-direction: column; gap: 8px; }
 
         .format-toggle {
           display: grid;
