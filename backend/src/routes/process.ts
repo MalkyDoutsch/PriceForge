@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express'
 import multer from 'multer'
 import path from 'path'
 import fs from 'fs'
-import { parseExcel } from '../services/excelParser'
+import { parseExcel, ExcelFormatError } from '../services/excelParser'
 import { buildLabels } from '../services/labelBuilder'
 import { generateLabelsPDF, generateSummaryPDF } from '../services/pdfGenerator'
 import { generateSummaryExcel } from '../services/excelGenerator'
@@ -61,6 +61,10 @@ router.post('/process', upload.single('file'), async (req: Request, res: Respons
       labels,
     })
   } catch (err) {
+    if (err instanceof ExcelFormatError) {
+      res.status(400).json({ error: err.message })
+      return
+    }
     console.error(err)
     res.status(500).json({ error: 'Processing failed', details: (err as Error).message })
   } finally {
