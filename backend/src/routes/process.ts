@@ -5,7 +5,8 @@ import fs from 'fs'
 import { parseExcel } from '../services/excelParser'
 import { buildLabels } from '../services/labelBuilder'
 import { generateLabelsPDF } from '../services/pdfGenerator'
-import { ProcessRequest, LabelFormat, LabelData } from '../types'
+import { generatePriceListExcel } from '../services/excelGenerator'
+import { ProcessRequest, LabelData } from '../types'
 
 const router = Router()
 
@@ -29,11 +30,10 @@ router.post('/process', upload.single('file'), async (req: Request, res: Respons
   }
 
   try {
-    const { euroRate, clubProfit, regularProfit, format } = req.body as {
+    const { euroRate, clubProfit, regularProfit } = req.body as {
       euroRate: string
       clubProfit: string
       regularProfit: string
-      format: LabelFormat
     }
 
     if (!euroRate || !clubProfit || !regularProfit) {
@@ -45,7 +45,6 @@ router.post('/process', upload.single('file'), async (req: Request, res: Respons
       euroRate: parseFloat(euroRate),
       clubProfit: parseFloat(clubProfit),
       regularProfit: parseFloat(regularProfit),
-      format: format ?? 'pdf-a4',
     }
 
     // Parse Excel
@@ -54,8 +53,7 @@ router.post('/process', upload.single('file'), async (req: Request, res: Respons
     // Build labels
     const labels = buildLabels(rows, params)
 
-    // TODO: generate output file based on format
-    // For now — return labels as JSON (useful for frontend dev)
+    // Files are generated on demand via /generate-pdf and /generate-excel
     res.json({
       success: true,
       totalRows: rows.length,
@@ -101,6 +99,34 @@ router.post('/generate-pdf', (req: Request, res: Response) => {
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'PDF generation failed', details: (err as Error).message })
+  }
+})
+
+/**
+ * POST /api/generate-excel
+ * Generates a price list Excel file from label data
+ * Body: { labels: LabelData[] }
+ * Returns: .xlsx file as binary
+ */
+router.post('/generate-excel', async (req: Request, res: Response) => {
+  try {
+    const { labels } = req.body as { labels: LabelData[] }
+
+    if (!labels || !Array.isArray(labels) || labels.length === 0) {
+      res.status(400).json({ error: 'Invalid or empty labels array' })
+      return
+    }
+
+    const buffer = await generatePriceListExcel(labels)
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    res.setHeader('Content-Length', buffer.length)
+    res.setHeader('Content-Disposition', 'attachment; filename="prices.xlsx"')
+
+    res.end(buffer)
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Excel generation failed', details: (err as Error).message })
   }
 })
 

@@ -16,7 +16,6 @@ export interface ProcessRequest {
   euroRate: number
   clubProfit: number
   regularProfit: number
-  format: LabelFormat
 }
 
 export interface PriceResult {
@@ -31,5 +30,3 @@ export interface LabelData {
   regularPrice: number
   quantity: number
 }
-
-export type LabelFormat = 'pdf-a4' | 'excel'

@@ -1,7 +1,5 @@
 import { useState, useRef, useCallback } from 'react'
 
-type LabelFormat = 'pdf-a4' | 'excel'
-
 interface LabelData {
   article: string
   description: string
@@ -17,18 +15,12 @@ interface ApiResponse {
   labels: LabelData[]
 }
 
-const FORMATS: { value: LabelFormat; label: string; desc: string }[] = [
-  { value: 'pdf-a4', label: 'PDF — A4', desc: 'מדבקות לדפוס' },
-  { value: 'excel', label: 'Excel', desc: 'גיליון מדבקות' },
-]
-
 export default function App() {
   const [file, setFile] = useState<File | null>(null)
   const [dragging, setDragging] = useState(false)
   const [euroRate, setEuroRate] = useState('')
   const [clubProfit, setClubProfit] = useState('')
   const [regularProfit, setRegularProfit] = useState('')
-  const [format, setFormat] = useState<LabelFormat>('pdf-a4')
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<ApiResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -67,7 +59,6 @@ export default function App() {
     formData.append('euroRate', euroRate)
     formData.append('clubProfit', clubProfit)
     formData.append('regularProfit', regularProfit)
-    formData.append('format', format)
 
     try {
       const res = await fetch('http://localhost:3001/api/process', {
@@ -93,11 +84,11 @@ export default function App() {
     setRegularProfit('')
   }
 
-  const handleDownloadPDF = async () => {
+  const downloadFile = async (endpoint: string, fileName: string) => {
     if (!result?.labels) return
 
     try {
-      const res = await fetch('http://localhost:3001/api/generate-pdf', {
+      const res = await fetch(`http://localhost:3001/api/${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ labels: result.labels }),
@@ -105,7 +96,7 @@ export default function App() {
 
       if (!res.ok) {
         const error = await res.json()
-        throw new Error(error.error || 'Failed to generate PDF')
+        throw new Error(error.error || 'Failed to generate file')
       }
 
       // Create blob and trigger download
@@ -113,7 +104,7 @@ export default function App() {
       const url = window.URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `labels-${Date.now()}.pdf`
+      link.download = fileName
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
@@ -204,24 +195,6 @@ export default function App() {
               </div>
             </section>
 
-            {/* Format */}
-            <section className="section">
-              <label className="section-label">פורמט פלט</label>
-              <div className="format-grid">
-                {FORMATS.map((f) => (
-                  <button
-                    key={f.value}
-                    className={`format-btn ${format === f.value ? 'active' : ''}`}
-                    onClick={() => setFormat(f.value)}
-                    type="button"
-                  >
-                    <span className="format-label">{f.label}</span>
-                    <span className="format-desc">{f.desc}</span>
-                  </button>
-                ))}
-              </div>
-            </section>
-
             {error && <div className="error-msg">{error}</div>}
 
             <button
@@ -270,9 +243,22 @@ export default function App() {
               </div>
             </div>
 
-            <button className="download-btn" onClick={handleDownloadPDF}>
-              הורד מדבקות
-            </button>
+            {error && <div className="error-msg">{error}</div>}
+
+            <div className="download-actions">
+              <button
+                className="download-btn"
+                onClick={() => downloadFile('generate-pdf', `labels-${Date.now()}.pdf`)}
+              >
+                הורד מדבקות (PDF)
+              </button>
+              <button
+                className="download-btn secondary"
+                onClick={() => downloadFile('generate-excel', `prices-${Date.now()}.xlsx`)}
+              >
+                הורד קובץ מחירים (Excel)
+              </button>
+            </div>
           </div>
         )}
       </main>
@@ -407,25 +393,6 @@ export default function App() {
         .field input:focus { outline: none; border-color: var(--accent); }
         .field input::placeholder { color: var(--muted); }
 
-        .format-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-
-        .format-btn {
-          background: var(--surface2);
-          border: 1.5px solid var(--border);
-          border-radius: var(--radius);
-          padding: 14px 16px;
-          cursor: pointer;
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-          text-align: right;
-          transition: all 0.18s;
-        }
-        .format-btn:hover { border-color: var(--muted); }
-        .format-btn.active { border-color: var(--accent); background: rgba(232,197,71,0.07); }
-        .format-label { font-weight: 600; color: var(--text); font-size: 0.95rem; }
-        .format-desc { color: var(--muted); font-size: 0.78rem; }
-
         .error-msg {
           background: rgba(232,91,91,0.1);
           border: 1px solid rgba(232,91,91,0.3);
@@ -540,9 +507,13 @@ export default function App() {
           transition: opacity 0.18s, transform 0.12s;
         }
         .download-btn:hover { opacity: 0.88; transform: translateY(-1px); }
+        .download-btn.secondary { background: var(--accent2); }
+
+        .download-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
         @media (max-width: 480px) {
           .fields { grid-template-columns: 1fr; }
+          .download-actions { grid-template-columns: 1fr; }
           .table-head, .table-row { grid-template-columns: 1fr 1fr 1fr; }
           .table-head span:nth-child(2),
           .table-row .desc { display: none; }

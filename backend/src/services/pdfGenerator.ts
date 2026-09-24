@@ -37,7 +37,7 @@ const DEFAULT_LABEL_CONFIG: LabelConfig = {
 /**
  * Generates a printable PDF of product labels
  *
- * @param labels - Array of label data objects (one per physical label)
+ * @param labels - Array of label data objects; each is printed `quantity` times
  * @param config - Optional configuration for label layout
  * @returns PDF document as bytes (Uint8Array)
  *
@@ -77,8 +77,13 @@ export function generateLabelsPDF(
   const rowsPerPage = Math.floor(availableHeight / labelWithGap)
   const labelsPerPage = rowsPerPage * finalConfig.columnsPerRow
 
+  // One physical label per unit of quantity
+  const physicalLabels = labels.flatMap((label) =>
+    Array.from({ length: label.quantity || 1 }, () => label)
+  )
+
   // Process each label
-  labels.forEach((label, index) => {
+  physicalLabels.forEach((label, index) => {
     // Calculate if we need a new page
     if (index > 0 && index % labelsPerPage === 0) {
       pdf.addPage()

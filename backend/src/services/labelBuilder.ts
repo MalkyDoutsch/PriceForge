@@ -3,10 +3,20 @@ import { calculatePrices } from './priceCalculator'
 
 /**
  * Converts parsed Excel rows into label data.
- * Each row produces one LabelData with quantity = pieces.
+ * Rows sharing the same article are merged into one LabelData,
+ * with quantity = sum of their pieces. Prices are taken from the first row.
  */
 export function buildLabels(rows: ExcelRow[], params: ProcessRequest): LabelData[] {
-  return rows.flatMap((row) => {
+  const byArticle = new Map<string, LabelData>()
+
+  for (const row of rows) {
+    const quantity = row.pieces || 1
+    const existing = byArticle.get(row.article)
+    if (existing) {
+      existing.quantity += quantity
+      continue
+    }
+
     const { clubPrice, regularPrice } = calculatePrices(
       row.price,
       params.euroRate,
@@ -14,14 +24,14 @@ export function buildLabels(rows: ExcelRow[], params: ProcessRequest): LabelData
       params.regularProfit
     )
 
-    const label=  {
+    byArticle.set(row.article, {
       article: row.article,
       description: row.description,
       clubPrice,
       regularPrice,
-      quantity: row.pieces || 1,
-    }
+      quantity,
+    })
+  }
 
-    return Array.from({ length: row.pieces || 1 }, () => ({ ...label }))
-  })
+  return [...byArticle.values()]
 }
