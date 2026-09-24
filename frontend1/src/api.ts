@@ -1,4 +1,12 @@
-import type { LabelData, LabelSettings, ProcessParams, ProcessResult, SummaryFormat } from './types'
+import type {
+  ColumnMapping,
+  InspectResult,
+  LabelData,
+  LabelSettings,
+  ProcessParams,
+  ProcessResult,
+  SummaryFormat,
+} from './types'
 
 const API_BASE = 'http://localhost:3001/api'
 
@@ -21,12 +29,27 @@ async function postForFile(endpoint: string, body: object): Promise<Blob> {
   return res.blob()
 }
 
-export async function processFile(file: File, params: ProcessParams): Promise<ProcessResult> {
+/** Reads the sheet's first rows and the mapping suggested from its headers */
+export async function inspectFile(file: File): Promise<InspectResult> {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const res = await fetch(`${API_BASE}/inspect`, { method: 'POST', body: formData })
+  if (!res.ok) throw await toError(res)
+  return res.json()
+}
+
+export async function processFile(
+  file: File,
+  params: ProcessParams,
+  mapping: ColumnMapping
+): Promise<ProcessResult> {
   const formData = new FormData()
   formData.append('file', file)
   formData.append('euroRate', params.euroRate)
   formData.append('clubProfit', params.clubProfit)
   formData.append('regularProfit', params.regularProfit)
+  formData.append('mapping', JSON.stringify(mapping))
 
   const res = await fetch(`${API_BASE}/process`, { method: 'POST', body: formData })
   if (!res.ok) throw await toError(res)

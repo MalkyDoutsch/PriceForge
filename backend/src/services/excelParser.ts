@@ -1,44 +1,27 @@
 import ExcelJS from 'exceljs'
-import { ExcelRow } from '../types'
+import { ColumnMapping, ExcelRow, Sheet, SheetRow } from '../types'
 import { UserInputError } from '../errors'
 
-type Field = keyof ExcelRow
+/** Reads the first worksheet into a table of displayed cell texts */
+export async function readSheet(filePath: string): Promise<Sheet> {
+  const workbook = new ExcelJS.Workbook()
+  await workbook.xlsx.readFile(filePath)
 
-/**
- * Accepted header names per field, in normalized form (see normalizeHeader).
- * Matching is exact, so 'code' does not match 'ean code'.
- */
-const HEADER_ALIASES: Record<Field, string[]> = {
-  article: ['articlecode', 'article', 'code', 'מקט', 'קוד'],
-  description: ['articledescription', 'description', 'תיאור'],
-  colorCode: ['colorcode'],
-  colorDescription: ['colordescription'],
-  size: ['size'],
-  family: ['family'],
-  price: ['price', 'מחיר'],
-  ean: ['eancode', 'eancodes', 'ean'],
-  pieces: ['pieces', 'qty', 'quantity', 'כמות'],
-  segment: ['segment'],
-  articleType: ['articletype'],
-}
+  const worksheet = workbook.worksheets[0]
+  if (!worksheet || worksheet.rowCount === 0) {
+    throw new UserInputError('הקובץ ריק')
+  }
 
-const REQUIRED_FIELDS: { field: Field; name: string }[] = [
-  { field: 'article', name: 'קוד' },
-  { field: 'price', name: 'מחיר' },
-]
+  const columnCount = worksheet.columnCount
+  const rows: SheetRow[] = []
 
-/** How many rows from the top to search for the header row */
-const HEADER_SEARCH_ROWS = 10
+  worksheet.eachRow((row, rowNumber) => {
+    // cell.text returns the displayed value, including formula results
+    const cells = Array.from({ length: columnCount }, (_, i) => row.getCell(i + 1).text.trim())
+    rows.push({ rowNumber, cells })
+  })
 
-/**
- * Lowercases, removes spaces/punctuation and unifies 'colour' → 'color'.
- * e.g. ' Price ' → 'price', 'Article code' → 'articlecode', 'מק"ט' → 'מקט'
- */
-function normalizeHeader(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]/gu, '')
-    .replace(/colour/g, 'color')
+  return { columnCount, rows }
 }
 
 /**
@@ -51,107 +34,36 @@ function parseNumber(text: string): number {
   return cleaned ? Number(cleaned) : NaN
 }
 
-/** Maps each recognized field to its column number in the given row */
-function mapColumns(row: ExcelJS.Row): Partial<Record<Field, number>> {
-  const columns: Partial<Record<Field, number>> = {}
-
-  row.eachCell((cell, colNumber) => {
-    const header = normalizeHeader(cell.text)
-    if (!header) return
-
-    for (const field of Object.keys(HEADER_ALIASES) as Field[]) {
-      if (columns[field] === undefined && HEADER_ALIASES[field].includes(header)) {
-        columns[field] = colNumber
-        break
-      }
-    }
-  })
-
-  return columns
-}
-
 /**
- * Finds the header row within the first rows of the sheet:
- * the first row containing all required columns.
- * Throws UserInputError with the missing columns if none is found.
+ * Extracts product rows according to the column mapping.
+ * Rows without a code or a numeric price (empty rows, totals) are skipped.
  */
-function findHeaderRow(worksheet: ExcelJS.Worksheet) {
-  let best: { rowNumber: number; columns: Partial<Record<Field, number>>; matched: number } | null = null
-  const lastRow = Math.min(HEADER_SEARCH_ROWS, worksheet.rowCount)
+export function extractRows(sheet: Sheet, mapping: ColumnMapping): ExcelRow[] {
+  const cell = (cells: string[], column: number | null) =>
+    column === null ? '' : (cells[column - 1] ?? '')
 
-  for (let rowNumber = 1; rowNumber <= lastRow; rowNumber++) {
-    const columns = mapColumns(worksheet.getRow(rowNumber))
-
-    if (REQUIRED_FIELDS.every(({ field }) => columns[field] !== undefined)) {
-      return { rowNumber, columns }
-    }
-
-    const matched = Object.keys(columns).length
-    if (!best || matched > best.matched) {
-      best = { rowNumber, columns, matched }
-    }
-  }
-
-  if (!best) {
-    throw new UserInputError('הקובץ ריק')
-  }
-
-  const bestColumns = best.columns
-  const missing = REQUIRED_FIELDS.filter(({ field }) => bestColumns[field] === undefined)
-    .map(({ name }) => name)
-    .join(', ')
-
-  const foundHeaders: string[] = []
-  worksheet.getRow(best.rowNumber).eachCell((cell) => {
-    if (cell.text.trim()) foundHeaders.push(cell.text.trim())
-  })
-
-  throw new UserInputError(
-    `לא נמצאה עמודת ${missing}. הכותרות שנמצאו בקובץ: ${foundHeaders.join(', ') || '(אין)'}`
-  )
-}
-
-export async function parseExcel(filePath: string): Promise<ExcelRow[]> {
-  const workbook = new ExcelJS.Workbook()
-  await workbook.xlsx.readFile(filePath)
-
-  const worksheet = workbook.worksheets[0]
-  if (!worksheet) {
-    throw new UserInputError('הקובץ ריק')
-  }
-
-  const { rowNumber: headerRowNumber, columns } = findHeaderRow(worksheet)
   const rows: ExcelRow[] = []
 
-  worksheet.eachRow((row, rowNumber) => {
-    if (rowNumber <= headerRowNumber) return
+  for (const { rowNumber, cells } of sheet.rows) {
+    if (mapping.headerRow !== null && rowNumber <= mapping.headerRow) continue
 
-    // cell.text returns the displayed value, including formula results
-    const get = (field: Field) => {
-      const col = columns[field]
-      return col === undefined ? '' : row.getCell(col).text.trim()
-    }
+    const article = cell(cells, mapping.article)
+    const price = parseNumber(cell(cells, mapping.price))
+    if (!article || Number.isNaN(price)) continue
 
-    const article = get('article')
-    const price = parseNumber(get('price'))
-    if (!article || Number.isNaN(price)) return // skip empty / non-product rows
-
-    const pieces = parseNumber(get('pieces'))
+    const pieces = parseNumber(cell(cells, mapping.pieces))
 
     rows.push({
       article,
-      description: get('description'),
-      colorCode: get('colorCode'),
-      colorDescription: get('colorDescription'),
-      size: get('size'),
-      family: get('family'),
-      price,
-      ean: get('ean'),
+      description: cell(cells, mapping.description),
+      price: mapping.priceInCents ? price / 100 : price,
       pieces: Number.isNaN(pieces) ? 1 : pieces,
-      segment: get('segment'),
-      articleType: get('articleType'),
     })
-  })
+  }
+
+  if (rows.length === 0) {
+    throw new UserInputError('לא נמצאו שורות עם קוד ומחיר בעמודות שנבחרו')
+  }
 
   return rows
 }

@@ -1,9 +1,17 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
-import type { LabelSettings, ProcessResult, SummaryFormat } from './types'
-import { fetchLabelsPdf, fetchSummary, processFile } from './api'
+import { useState, useRef, useEffect } from 'react'
+import type { InspectResult, LabelSettings, ProcessResult, SummaryFormat } from './types'
+import { fetchLabelsPdf, fetchSummary, inspectFile, processFile } from './api'
 import { saveBlob, showBlobInTab } from './download'
 import { getSettingsError, loadLabelSettings, saveLabelSettings } from './labelSettings'
+import {
+  type MappingDraft,
+  getMappingError,
+  initialMapping,
+  saveMapping,
+  toColumnMapping,
+} from './columnMapping'
 import LabelSetup from './components/LabelSetup'
+import ColumnMappingPanel from './components/ColumnMappingPanel'
 
 const SUMMARY_FORMATS: { value: SummaryFormat; label: string }[] = [
   { value: 'pdf', label: 'PDF' },
@@ -21,7 +29,12 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   const [summaryFormat, setSummaryFormat] = useState<SummaryFormat>('pdf')
   const [labelSettings, setLabelSettings] = useState<LabelSettings>(loadLabelSettings)
+  const [inspect, setInspect] = useState<InspectResult | null>(null)
+  const [mapping, setMapping] = useState<MappingDraft | null>(null)
+  const [inspecting, setInspecting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // Ignores results of an inspect request superseded by a newer file selection
+  const inspectRequestId = useRef(0)
 
   // Remember the label settings for next time
   useEffect(() => {
@@ -30,28 +43,50 @@ export default function App() {
 
   const settingsError = getSettingsError(labelSettings)
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
+  /** Selects a file and reads its columns for the mapping step */
+  const selectFile = async (selected: File) => {
+    const requestId = ++inspectRequestId.current
+    setFile(selected)
+    setError(null)
+    setInspect(null)
+    setMapping(null)
+    setInspecting(true)
+
+    try {
+      const result = await inspectFile(selected)
+      if (requestId !== inspectRequestId.current) return
+      setInspect(result)
+      setMapping(initialMapping(result))
+    } catch (err) {
+      if (requestId === inspectRequestId.current) setError((err as Error).message)
+    } finally {
+      if (requestId === inspectRequestId.current) setInspecting(false)
+    }
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
     setDragging(false)
     const dropped = e.dataTransfer.files[0]
     if (dropped && (dropped.name.endsWith('.xlsx') || dropped.name.endsWith('.xls'))) {
-      setFile(dropped)
-      setError(null)
+      selectFile(dropped)
     } else {
       setError('יש להעלות קובץ Excel בלבד (.xlsx / .xls)')
     }
-  }, [])
+  }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0]
-    if (selected) {
-      setFile(selected)
-      setError(null)
-    }
+    // Allow selecting the same file again later
+    e.target.value = ''
+    if (selected) selectFile(selected)
   }
 
   const handleSubmit = async () => {
     if (!file) return setError('נא לבחור קובץ Excel')
+    if (!inspect || !mapping) return setError('הקובץ עדיין נקרא, נא להמתין')
+    const columnMapping = toColumnMapping(mapping)
+    if (!columnMapping) return setError(getMappingError(mapping))
     if (!euroRate || !clubProfit || !regularProfit) return setError('נא למלא את כל השדות')
 
     setLoading(true)
@@ -59,7 +94,8 @@ export default function App() {
     setResult(null)
 
     try {
-      setResult(await processFile(file, { euroRate, clubProfit, regularProfit }))
+      setResult(await processFile(file, { euroRate, clubProfit, regularProfit }, columnMapping))
+      saveMapping(inspect, columnMapping)
     } catch (err) {
       setError((err as Error).message)
     } finally {
@@ -68,7 +104,11 @@ export default function App() {
   }
 
   const reset = () => {
+    inspectRequestId.current++
     setFile(null)
+    setInspect(null)
+    setMapping(null)
+    setInspecting(false)
     setResult(null)
     setError(null)
     setEuroRate('')
@@ -159,6 +199,15 @@ export default function App() {
               </div>
             </section>
 
+            {inspecting && <div className="loading-note">קורא את הקובץ…</div>}
+
+            {inspect && mapping && (
+              <section className="section">
+                <span className="section-label">מיפוי עמודות</span>
+                <ColumnMappingPanel inspect={inspect} mapping={mapping} onChange={setMapping} />
+              </section>
+            )}
+
             {/* Parameters */}
             <section className="section">
               <label className="section-label">פרמטרי חישוב</label>
@@ -201,7 +250,7 @@ export default function App() {
             <button
               className="submit-btn"
               onClick={handleSubmit}
-              disabled={loading}
+              disabled={loading || inspecting}
             >
               {loading ? <span className="spinner" /> : 'עבד קובץ'}
             </button>
@@ -424,6 +473,18 @@ export default function App() {
         }
         .field input:focus { outline: none; border-color: var(--accent); }
         .field input::placeholder { color: var(--muted); }
+
+        .checkbox-field {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 0.85rem;
+          color: var(--text);
+          cursor: pointer;
+        }
+        .checkbox-field input { accent-color: var(--accent); width: 16px; height: 16px; }
+
+        .loading-note { color: var(--muted); font-size: 0.85rem; }
 
         .error-msg {
           background: rgba(232,91,91,0.1);

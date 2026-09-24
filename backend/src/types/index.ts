@@ -1,15 +1,50 @@
+/** A product row extracted from the uploaded sheet */
 export interface ExcelRow {
   article: string
   description: string
-  colorCode: string
-  colorDescription: string
-  size: string
-  family: string
+  /** Price in EUR */
   price: number
-  ean: string
   pieces: number
-  segment: string
-  articleType: string
+}
+
+/** A non-empty sheet row; cells are the displayed texts, cells[0] is column A */
+export interface SheetRow {
+  rowNumber: number
+  cells: string[]
+}
+
+export interface Sheet {
+  columnCount: number
+  rows: SheetRow[]
+}
+
+export type MappedField = 'article' | 'description' | 'price' | 'pieces'
+
+/** Which sheet column holds each field. Columns are 1-based (A = 1). */
+export interface ColumnMapping {
+  article: number
+  price: number
+  description: number | null
+  /** null: each row is one piece */
+  pieces: number | null
+  /** Row number of the header row; null when the sheet has no headers */
+  headerRow: number | null
+  /** Price column is in cents (960 = 9.60) */
+  priceInCents: boolean
+}
+
+/** Mapping suggested from recognized header names */
+export interface MappingSuggestion {
+  headerRow: number | null
+  columns: Partial<Record<MappedField, number>>
+}
+
+/** Returned by /api/inspect so the user can map the columns */
+export interface InspectResult {
+  columnCount: number
+  /** First rows of the sheet (including the header row, if any) */
+  rows: SheetRow[]
+  suggestion: MappingSuggestion
 }
 
 export interface ProcessRequest {
