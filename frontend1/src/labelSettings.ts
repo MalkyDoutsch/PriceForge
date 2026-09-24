@@ -15,19 +15,19 @@ export interface LabelPreset {
   fontSizes: LabelFontSizes
 }
 
-/** The print shop's pre-cut A4 label sheets */
+/** The print shop's pre-cut A4 label sheets. The first one is the default. */
 export const LABEL_PRESETS: LabelPreset[] = [
-  {
-    id: '70x35',
-    name: '70×35 (דפוס)',
-    layout: { labelWidth: 70, labelHeight: 35, marginX: 0, marginY: 8.5, gapX: 0, gapY: 0 },
-    fontSizes: { article: 12, description: 8, price: 16 },
-  },
   {
     id: '70x25',
     name: '70×25 (דפוס)',
     layout: { labelWidth: 70, labelHeight: 25, marginX: 0, marginY: 11, gapX: 0, gapY: 0 },
     fontSizes: { article: 11, description: 7, price: 13 },
+  },
+  {
+    id: '70x35',
+    name: '70×35 (דפוס)',
+    layout: { labelWidth: 70, labelHeight: 35, marginX: 0, marginY: 8.5, gapX: 0, gapY: 0 },
+    fontSizes: { article: 12, description: 8, price: 16 },
   },
 ]
 

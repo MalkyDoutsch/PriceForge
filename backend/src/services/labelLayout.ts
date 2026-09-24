@@ -5,15 +5,15 @@ import { UserInputError } from '../errors'
 export const PAGE_WIDTH = 210
 export const PAGE_HEIGHT = 297
 
-/** Default: the print shop's 70×35 mm label sheet (3 × 8) */
+/** Default: the print shop's 70×25 mm label sheet (3 × 11) */
 export const DEFAULT_LABEL_SETTINGS: LabelSettings = {
   labelWidth: 70,
-  labelHeight: 35,
+  labelHeight: 25,
   marginX: 0,
-  marginY: 8.5,
+  marginY: 11,
   gapX: 0,
   gapY: 0,
-  fontSizes: { article: 12, description: 8, price: 16 },
+  fontSizes: { article: 11, description: 7, price: 13 },
   showBorder: false,
 }
 
